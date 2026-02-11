@@ -1,64 +1,73 @@
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kkokki - Digital Rooster</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#181511">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kkokki">
+    <link rel="apple-touch-icon" href="/static/assets/icon_kkokki_main_1769947399319.png">
+
+    <!-- Styles -->
     <link rel="stylesheet" href="/static/style.css">
 
-    <!-- Leaflet Configuration -->
+    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRS9BMY=" crossorigin="" />
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRS9BMY=" crossorigin="">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
-
 <body>
 
-    <!-- App Container - Mobile Style Layout -->
-    <div class="app-container">
+<div class="app-container">
 
-        <!-- Top: Search Header -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- SCREEN 1: MAP                                          -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <section id="screen-map" class="screen active">
+        <!-- Search Header -->
         <div class="search-container">
             <div class="search-box">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="searchInput" class="search-input" placeholder="장소를 검색하세요..."
-                    oninput="debounceSearch()" onfocus="onSearchFocus()" onblur="onSearchBlur()" autocomplete="off">
-                <span id="searchModeIndicator" class="search-mode-indicator">출발지</span>
+                <span class="search-icon">&#x1F50D;</span>
+                <input type="text" id="searchInput" class="search-input"
+                       placeholder="SEARCH DESTINATION" autocomplete="off">
+                <span id="searchModeIndicator" class="search-mode-indicator">START</span>
             </div>
-            <!-- Autocomplete Results -->
             <div id="searchResults" class="search-results"></div>
         </div>
 
-        <!-- Center: Map Area -->
+        <!-- Map -->
         <div class="map-wrapper">
             <div id="map"></div>
             <div class="map-overlay-grid"></div>
+            <div class="map-title">WORLD MAP QUEST</div>
         </div>
 
-        <!-- Bottom: Controls & Quest Info -->
+        <!-- Bottom Controls -->
         <div class="bottom-controls">
-
-            <!-- Transport Mode Selector -->
+            <!-- Transport Mode -->
             <div class="transport-selector">
-                <button class="transport-btn active" onclick="setTransport('car')">
-                    <span>🚗</span>
-                    <span>CAR</span>
+                <button class="transport-btn active" data-mode="car">
+                    <img src="/static/assets/icon_set_weather_traffic_1769947517891.png" class="transport-icon" alt="">
+                    <span>DRIVING</span>
                 </button>
-                <button class="transport-btn" onclick="setTransport('transit')">
-                    <span>🚇</span>
+                <button class="transport-btn" data-mode="transit">
+                    <span class="transport-emoji">&#x1F687;</span>
                     <span>TRANSIT</span>
                 </button>
-                <button class="transport-btn" onclick="setTransport('walk')">
-                    <span>🚶</span>
+                <button class="transport-btn" data-mode="walk">
+                    <span class="transport-emoji">&#x1F6B6;</span>
                     <span>WALK</span>
                 </button>
             </div>
 
-            <!-- Quest Info Card -->
+            <!-- Quest Card -->
             <div class="quest-card">
-                <!-- Pixel Corners -->
                 <div class="pixel-corner pc-tl"></div>
                 <div class="pixel-corner pc-tr"></div>
                 <div class="pixel-corner pc-bl"></div>
@@ -66,666 +75,185 @@
 
                 <div class="quest-content">
                     <div class="quest-details">
-                        <div class="quest-title-row">
-                            <span class="quest-title">COMMUTE QUEST</span>
-                            <span id="statusBadge" class="live-badge hidden">LIVE</span>
-                        </div>
-
-                        <!-- Route Setup UI -->
                         <div class="route-setup">
-                            <div class="route-row selecting" id="rowStart" onclick="setSelectionMode('start')">
+                            <div class="route-row selecting" id="rowStart" data-target="start">
                                 <span class="route-label label-start">START</span>
-                                <span id="startDisplay" class="route-value empty">Select on Map...</span>
+                                <span id="startDisplay" class="route-value empty">Tap map or search...</span>
                             </div>
-                            <div class="route-row" id="rowEnd" onclick="setSelectionMode('end')">
-                                <span class="route-label label-end">END</span>
-                                <span id="endDisplay" class="route-value empty">Select on Map...</span>
+                            <div class="route-row" id="rowEnd" data-target="end">
+                                <span class="route-label label-end">DEST</span>
+                                <span id="endDisplay" class="route-value empty">Tap map or search...</span>
                             </div>
-                            <button class="swap-btn" onclick="event.stopPropagation(); swapLocations();" title="출발지/도착지 교환">
-                                ⇅
-                            </button>
+                            <button class="swap-btn" id="swapBtn" title="Swap">&#x21C5;</button>
                         </div>
 
-                        <div class="quest-stat"
-                            style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
-                            <div style="display: flex; align-items: center; gap: 5px;">
-                                <span>⏰</span>
-                                <input type="time" id="targetTime" value="09:00"
-                                    style="background:transparent; border:1px solid #555; color:white; font-family:'Space Grotesk'; font-size:1rem; padding:2px;">
-                            </div>
-                            <span style="color:var(--text-muted); font-size:0.8rem;">ARRIVAL TIME</span>
+                        <div class="quest-stat">
+                            <span>&#x23F0;</span>
+                            <input type="time" id="targetTime" value="09:00" class="time-input">
+                            <span class="quest-stat-label">ARRIVAL</span>
                         </div>
 
                         <p id="statusText" class="quest-status-text">
-                            [START] Mode Active: Click map to set Start Point.
+                            Select start point on map.
                         </p>
                     </div>
 
                     <div class="quest-thumbnail">
                         <div id="questThumb" class="thumb-img"
-                            style="background-image: url('/static/assets/bg_home_sunny_1769947415146.png')"></div>
+                             style="background-image: url('/static/assets/bg_home_sunny_1769947415146.png')"></div>
                     </div>
                 </div>
 
-                <!-- Main Action Button -->
-                <button id="mainBtn" class="start-btn" onclick="toggleMonitoring()">
+                <!-- Start Button -->
+                <button id="startAdventureBtn" class="start-btn" disabled>
+                    <img src="/static/assets/ui_btn_journey_1769947501593.png" class="btn-icon" alt="">
                     <span>START ADVENTURE</span>
-                    <span>▶️</span>
                 </button>
             </div>
+        </div>
+    </section>
 
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- SCREEN 2: MAIN MONITOR                                 -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <section id="screen-main" class="screen">
+        <div class="main-header">
+            <div class="main-header-left">
+                <span class="header-label">DEPARTURE IN:</span>
+            </div>
+            <button class="hamburger-btn" id="menuBtn">&#x2261;</button>
+        </div>
+
+        <div class="countdown-area">
+            <div class="countdown-timer" id="countdownTimer">00:00</div>
+            <div class="eta-display" id="etaDisplay">CURRENT ETA: --:-- AM</div>
+        </div>
+
+        <div class="character-scene" id="characterScene">
+            <img class="scene-bg" id="sceneBg"
+                 src="/static/assets/bg_home_sunny_1769947415146.png" alt="">
+            <img class="scene-char" id="sceneChar"
+                 src="/static/assets/char_kkokki_idle_1769947451923.png" alt="">
+        </div>
+
+        <div class="main-bottom">
+            <div class="toggle-row">
+                <button class="monitor-toggle" id="monitorToggle">
+                    <span class="toggle-track">
+                        <span class="toggle-thumb"></span>
+                    </span>
+                    <span class="toggle-text" id="toggleText">ON</span>
+                </button>
+            </div>
+            <div class="log-console" id="logConsole">
+                <div class="log-entry">[--:--] Kkokki: Ready to roll!</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- SCREEN 3: SETTINGS (Equipment Setup)                   -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <section id="screen-settings" class="screen">
+        <div class="settings-card">
+            <div class="settings-header">
+                <button class="back-btn" id="settingsBackBtn">&#x2190;</button>
+                <h2 class="settings-title">Equipment Setup</h2>
+                <div class="settings-char">
+                    <img src="/static/assets/char_kkokki_idle_1769947451923.png" class="settings-char-img" alt="">
+                </div>
+            </div>
+
+            <!-- Buffer Time -->
+            <div class="setting-group">
+                <label class="setting-label">Buffer Time <span class="setting-unit">(MINUTES)</span></label>
+                <div class="slider-container">
+                    <input type="range" id="bufferSlider" class="retro-slider" min="10" max="60" step="5" value="30">
+                    <div class="slider-value" id="bufferValue">30</div>
+                </div>
+                <div class="slider-labels">
+                    <span>Lv.1 Quick Ready</span>
+                    <span>Lv.3 Luxury Ready</span>
+                </div>
+            </div>
+
+            <!-- BGM Select -->
+            <div class="setting-group">
+                <label class="setting-label">BGM Select</label>
+                <div class="bgm-list">
+                    <label class="bgm-item active">
+                        <input type="radio" name="bgm" value="bgm_1" checked>
+                        <span class="bgm-icon">&#x1F3B5;</span>
+                        <span class="bgm-name">Forest Town</span>
+                        <button class="bgm-preview-btn" data-bgm="bgm_1">&#x25B6;</button>
+                    </label>
+                    <label class="bgm-item disabled">
+                        <input type="radio" name="bgm" value="bgm_2" disabled>
+                        <span class="bgm-icon">&#x2694;&#xFE0F;</span>
+                        <span class="bgm-name">Boss Battle</span>
+                        <span class="bgm-coming-soon">Coming Soon</span>
+                    </label>
+                    <label class="bgm-item disabled">
+                        <input type="radio" name="bgm" value="bgm_3" disabled>
+                        <span class="bgm-icon">&#x1F31F;</span>
+                        <span class="bgm-name">Hero's Morning</span>
+                        <span class="bgm-coming-soon">Coming Soon</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Toggles -->
+            <div class="setting-group">
+                <label class="toggle-setting">
+                    <span class="toggle-icon">&#x1F514;</span>
+                    <span class="toggle-label-text">Early Warning <small>(5 MIN BEFORE)</small></span>
+                    <input type="checkbox" id="earlyWarningToggle" class="retro-checkbox">
+                    <span class="checkbox-visual"></span>
+                </label>
+                <label class="toggle-setting">
+                    <span class="toggle-icon">&#x1F6A8;</span>
+                    <span class="toggle-label-text">Urgent Traffic Alert <small>(INSTANT NOTIFY)</small></span>
+                    <input type="checkbox" id="urgentAlertToggle" class="retro-checkbox" checked>
+                    <span class="checkbox-visual"></span>
+                </label>
+            </div>
+
+            <!-- Wake-up Time Preview -->
+            <div class="wake-time-preview">
+                <span>Estimated Wake-up Time:</span>
+                <span class="wake-time-value" id="wakeTimePreview">07:00 AM</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- SCREEN 4: ALARM                                        -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <section id="screen-alarm" class="screen">
+        <div class="alarm-container">
+            <div class="alarm-time" id="alarmCurrentTime">07:00</div>
+            <div class="alarm-char-wrapper">
+                <img class="alarm-char" src="/static/assets/char_kkokki_panic_1769947468467.png" alt="">
+            </div>
+            <div class="alarm-label">WAKE UP!</div>
+            <button class="alarm-dismiss-btn" id="alarmDismissBtn">
+                <img src="/static/assets/ui_btn_journey_1769947501593.png" class="btn-icon" alt="">
+                <span>DISMISS</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- Early Warning Overlay -->
+    <div class="early-warning-overlay" id="earlyWarningOverlay">
+        <div class="early-warning-content">
+            <img src="/static/assets/char_kkokki_idle_1769947451923.png" class="early-warning-char" alt="">
+            <div class="early-warning-text">5 minutes until wake up...</div>
+            <button class="early-warning-dismiss" id="earlyWarningDismiss">OK</button>
         </div>
     </div>
 
-    <!-- Logic Script -->
-    <script>
-        // State
-        let map = null;
-        let markers = []; // Search Result Markers
-        let routeMarkers = { start: null, end: null }; // Confirmed Start/End Markers
-        let routeLines = []; // Lines connecting start and end
-        let isRunning = false;
-        let transportMode = 'car';
-        let searchTimeout = null;
+</div>
 
-        let selectionMode = 'start'; // 'start' or 'end'
-        let hasRoutePreview = false; // Flag to prevent checkStatus from overwriting route info
-
-        // Coordinates store
-        let startCoord = null;
-        let endCoord = null;
-
-        // Assets
-        const THUMB_SUNNY = '/static/assets/bg_home_sunny_1769947415146.png';
-        const THUMB_STORMY = '/static/assets/bg_home_stormy_delay_1769947430952.png';
-
-        // Init Map
-        document.addEventListener('DOMContentLoaded', () => {
-            // Initialize Map with OpenStreetMap tiles
-            map = L.map('map', {
-                zoomControl: false
-            });
-
-            // Center on Seoul
-            map.setView([37.5665, 126.9780], 13);
-
-            // Add OpenStreetMap tiles (fast and reliable)
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-                maxZoom: 19
-            }).addTo(map);
-
-            // Add zoom control to bottom right
-            L.control.zoom({
-                position: 'bottomright'
-            }).addTo(map);
-
-            // Fix map tiles not loading properly
-            setTimeout(() => {
-                map.invalidateSize();
-                map.setView([37.5665, 126.9780], 13);  // Re-center on Seoul
-            }, 200);
-
-            // Additional fix after a longer delay
-            setTimeout(() => {
-                map.invalidateSize();
-            }, 500);
-
-            // Also fix on window resize
-            window.addEventListener('resize', () => {
-                setTimeout(() => {
-                    map.invalidateSize();
-                }, 100);
-            });
-
-            // Poll status
-            setInterval(checkStatus, 2000);
-            checkStatus(); // Initial check
-
-            // Close dropdown when clicking map
-            map.on('click', (e) => {
-                document.getElementById('searchResults').classList.remove('active');
-            });
-
-            // Click on map to set location (reverse geocoding)
-            map.on('click', async (e) => {
-                const lat = e.latlng.lat;
-                const lon = e.latlng.lng;
-                
-                // Create a temporary place object
-                const place = {
-                    name: `선택한 위치`,
-                    lat: lat,
-                    lon: lon,
-                    address: `${lat.toFixed(6)}, ${lon.toFixed(6)}`
-                };
-                
-                // Try to get address from reverse geocoding (optional)
-                try {
-                    const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
-                    const data = await res.json();
-                    if (data.success && data.address) {
-                        place.name = data.name || '선택한 위치';
-                        place.address = data.address;
-                    }
-                } catch (e) {
-                    // Use coordinates if reverse geocoding fails
-                }
-                
-                selectPlace(place);
-                
-                // Fit map to show the marker
-                map.setView([lat, lon], map.getZoom());
-            });
-
-            // Focus search input when clicking START/END rows
-            document.getElementById('rowStart').addEventListener('click', () => {
-                document.getElementById('searchInput').focus();
-            });
-            document.getElementById('rowEnd').addEventListener('click', () => {
-                document.getElementById('searchInput').focus();
-            });
-        });
-
-        function setSelectionMode(mode) {
-            selectionMode = mode;
-            hasRoutePreview = false;  // Reset route preview flag
-
-            // Update UI
-            document.getElementById('rowStart').classList.remove('selecting');
-            document.getElementById('rowEnd').classList.remove('selecting');
-
-            const modeIndicator = document.getElementById('searchModeIndicator');
-            const searchInput = document.getElementById('searchInput');
-
-            if (mode === 'start') {
-                document.getElementById('rowStart').classList.add('selecting');
-                document.getElementById('statusText').innerText = "출발지를 검색하거나 지도에서 선택하세요";
-                modeIndicator.innerText = '출발지';
-                modeIndicator.className = 'search-mode-indicator mode-start';
-                searchInput.placeholder = '출발지를 검색하세요...';
-            } else {
-                document.getElementById('rowEnd').classList.add('selecting');
-                document.getElementById('statusText').innerText = "도착지를 검색하거나 지도에서 선택하세요";
-                modeIndicator.innerText = '도착지';
-                modeIndicator.className = 'search-mode-indicator mode-end';
-                searchInput.placeholder = '도착지를 검색하세요...';
-            }
-        }
-
-        function onSearchFocus() {
-            const resultList = document.getElementById('searchResults');
-            const query = document.getElementById('searchInput').value;
-            
-            // Show hint when input is empty
-            if (!query || query.length < 2) {
-                showSearchHint();
-            }
-        }
-
-        function onSearchBlur() {
-            // Delay to allow click on results
-            setTimeout(() => {
-                const resultList = document.getElementById('searchResults');
-                if (!resultList.matches(':hover')) {
-                    resultList.classList.remove('active');
-                }
-            }, 200);
-        }
-
-        function showSearchHint() {
-            const resultList = document.getElementById('searchResults');
-            resultList.innerHTML = `
-                <div class="search-hint">
-                    <span>💡</span> 역, 건물명, 주소를 입력해보세요
-                </div>
-            `;
-            resultList.classList.add('active');
-        }
-
-        function setTransport(mode) {
-            transportMode = mode;
-            document.querySelectorAll('.transport-btn').forEach(btn => btn.classList.remove('active'));
-            event.currentTarget.classList.add('active');
-            
-            // Recalculate route preview with new transport mode
-            if (startCoord && endCoord) {
-                previewRoute();
-            }
-        }
-
-        function swapLocations() {
-            // Swap coordinates
-            const tempCoord = startCoord;
-            startCoord = endCoord;
-            endCoord = tempCoord;
-
-            // Swap display text
-            const startDisplay = document.getElementById('startDisplay');
-            const endDisplay = document.getElementById('endDisplay');
-            const tempText = startDisplay.innerText;
-            const tempClass = startDisplay.classList.contains('empty');
-            
-            startDisplay.innerText = endDisplay.innerText;
-            startDisplay.classList.toggle('empty', endDisplay.classList.contains('empty'));
-            
-            endDisplay.innerText = tempText;
-            endDisplay.classList.toggle('empty', tempClass);
-
-            // Swap markers on map
-            if (routeMarkers.start || routeMarkers.end) {
-                const tempMarker = routeMarkers.start;
-                routeMarkers.start = routeMarkers.end;
-                routeMarkers.end = tempMarker;
-
-                // Update marker icons
-                if (routeMarkers.start) {
-                    routeMarkers.start.setIcon(createPinIcon("START", 'start'));
-                }
-                if (routeMarkers.end) {
-                    routeMarkers.end.setIcon(createPinIcon("END", 'end'));
-                }
-            }
-
-            // Recalculate route if both points exist
-            if (startCoord && endCoord) {
-                previewRoute();
-            }
-
-            // Visual feedback
-            document.querySelector('.swap-btn').classList.add('swapping');
-            setTimeout(() => {
-                document.querySelector('.swap-btn').classList.remove('swapping');
-            }, 300);
-        }
-
-        function debounceSearch() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(performSearch, 500); // 500ms delay
-        }
-
-        async function performSearch() {
-            const query = document.getElementById('searchInput').value.trim();
-            const resultList = document.getElementById('searchResults');
-
-            // Clear temporary search markers first
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-
-            if (!query || query.length < 2) {
-                showSearchHint();
-                return;
-            }
-
-            // Show loading
-            resultList.innerHTML = '<div class="search-loading">🔄 검색 중...</div>';
-            resultList.classList.add('active');
-
-            try {
-                const res = await fetch(`/api/search?keyword=${encodeURIComponent(query)}`);
-                const data = await res.json();
-
-                console.log('Search results:', data); // Debug log
-
-                if (!data.results || data.results.length === 0) {
-                    resultList.innerHTML = '<div class="search-no-results">😢 검색 결과가 없습니다</div>';
-                    return;
-                }
-
-                // Build result list
-                resultList.innerHTML = '';
-                const bounds = L.latLngBounds();
-
-                data.results.forEach((place, index) => {
-                    // 1. Add marker to Map with numbered icon
-                    const iconHtml = `
-                        <div class="custom-pin search-result-pin">
-                            <div class="pin-body pin-search">
-                                <span class="pin-number">${index + 1}</span>
-                            </div>
-                        </div>
-                    `;
-
-                    const customIcon = L.divIcon({
-                        html: iconHtml,
-                        className: '',
-                        iconSize: [30, 30],
-                        iconAnchor: [15, 30]
-                    });
-
-                    const marker = L.marker([place.lat, place.lon], { icon: customIcon }).addTo(map);
-                    marker.on('click', () => selectPlace(place));
-                    markers.push(marker);
-                    bounds.extend([place.lat, place.lon]);
-
-                    // 2. Add to dropdown list
-                    const item = document.createElement('div');
-                    item.className = 'search-item';
-                    item.innerHTML = `
-                        <span class="item-number">${index + 1}</span>
-                        <div class="item-content">
-                            <strong>${highlightMatch(place.name, query)}</strong>
-                            <small>${place.address || '주소 정보 없음'}</small>
-                        </div>
-                        <span class="item-select-hint">${selectionMode === 'start' ? '출발' : '도착'}</span>
-                    `;
-                    item.addEventListener('click', () => {
-                        selectPlace(place);
-                        map.setView([place.lat, place.lon], 16);
-                    });
-                    resultList.appendChild(item);
-                });
-
-                // Keep existing route points in view too
-                if (routeMarkers.start) bounds.extend(routeMarkers.start.getLatLng());
-                if (routeMarkers.end) bounds.extend(routeMarkers.end.getLatLng());
-
-                if (bounds.isValid()) {
-                    map.fitBounds(bounds, { padding: [50, 200] });
-                }
-
-            } catch (error) {
-                console.error('Search error:', error);
-                resultList.innerHTML = '<div class="search-no-results">⚠️ 검색 중 오류가 발생했습니다</div>';
-            }
-        }
-
-        // Highlight matching text in search results
-        function highlightMatch(text, query) {
-            if (!query) return text;
-            const regex = new RegExp(`(${query})`, 'gi');
-            return text.replace(regex, '<mark>$1</mark>');
-        }
-
-        function createPinIcon(label, type) {
-            const extraClass = type === 'start' ? 'pin-start' : 'pin-end';
-            const emoji = type === 'start' ? '🚀' : '🏁';
-            const iconHtml = `
-                    <div class="custom-pin ${extraClass}">
-                        <div class="pin-body">
-                            <span style="font-size:14px">${emoji}</span>
-                        </div>
-                        <div class="pin-label">${label}</div>
-                    </div>
-                `;
-            return L.divIcon({
-                html: iconHtml,
-                className: '',
-                iconSize: [40, 40],
-                iconAnchor: [20, 40]
-            });
-        }
-
-        function selectPlace(place) {
-            document.getElementById('searchResults').classList.remove('active');
-            document.getElementById('searchInput').value = '';
-
-            if (selectionMode === 'start') {
-                // Set Start
-                startCoord = place;
-                document.getElementById('startDisplay').innerText = place.name;
-                document.getElementById('startDisplay').classList.remove('empty');
-
-                if (routeMarkers.start) map.removeLayer(routeMarkers.start);
-
-                routeMarkers.start = L.marker([place.lat, place.lon], {
-                    icon: createPinIcon("START", 'start'),
-                    zIndexOffset: 1000
-                }).addTo(map);
-
-                // Add popup with place info
-                routeMarkers.start.bindPopup(`<b>출발지</b><br>${place.name}<br><small>${place.address || ''}</small>`);
-
-                // Fly to the selected location
-                map.flyTo([place.lat, place.lon], 15, { duration: 0.5 });
-
-                // Auto-switch to End selection and focus search
-                setSelectionMode('end');
-                setTimeout(() => {
-                    document.getElementById('searchInput').focus();
-                }, 600);
-
-            } else {
-                // Set End
-                endCoord = place;
-                document.getElementById('endDisplay').innerText = place.name;
-                document.getElementById('endDisplay').classList.remove('empty');
-
-                if (routeMarkers.end) map.removeLayer(routeMarkers.end);
-
-                routeMarkers.end = L.marker([place.lat, place.lon], {
-                    icon: createPinIcon("END", 'end'),
-                    zIndexOffset: 1000
-                }).addTo(map);
-
-                // Add popup with place info
-                routeMarkers.end.bindPopup(`<b>도착지</b><br>${place.name}<br><small>${place.address || ''}</small>`);
-            }
-
-            // Preview route if both points are set
-            if (startCoord && endCoord) {
-                previewRoute();
-            }
-
-            // Clear search markers
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-
-            // Draw/Update line connecting start and end
-            updateRouteLine();
-
-            // Fit bounds to show both markers (only when both are set)
-            if (routeMarkers.start && routeMarkers.end) {
-                const bounds = L.latLngBounds();
-                bounds.extend(routeMarkers.start.getLatLng());
-                bounds.extend(routeMarkers.end.getLatLng());
-                
-                setTimeout(() => {
-                    map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14 });
-                }, 300);
-            }
-        }
-
-        function updateRouteLine() {
-            // Remove existing lines
-            routeLines.forEach(line => map.removeLayer(line));
-            routeLines = [];
-
-            // Draw line only if both start and end are set
-            if (routeMarkers.start && routeMarkers.end) {
-                const startLatLng = routeMarkers.start.getLatLng();
-                const endLatLng = routeMarkers.end.getLatLng();
-
-                // Create main dashed line
-                const mainLine = L.polyline([startLatLng, endLatLng], {
-                    color: '#eea02b',
-                    weight: 4,
-                    opacity: 0.8,
-                    dashArray: '10, 10',
-                    lineCap: 'round'
-                }).addTo(map);
-                routeLines.push(mainLine);
-
-                // Add inner white line for better visibility
-                const innerLine = L.polyline([startLatLng, endLatLng], {
-                    color: '#fff',
-                    weight: 2,
-                    opacity: 0.4,
-                    dashArray: '5, 15',
-                    lineCap: 'round'
-                }).addTo(map);
-                routeLines.push(innerLine);
-            }
-        }
-
-        async function toggleMonitoring() {
-            if (isRunning) {
-                // Stop
-                if (!confirm("Abort Mission?")) return;
-                await fetch('/api/stop', { method: 'POST' });
-                checkStatus();
-            } else {
-                // Start
-                if (!startCoord || !endCoord) {
-                    alert("출발지와 도착지를 모두 선택해주세요!");
-                    return;
-                }
-
-                const targetTime = document.getElementById('targetTime').value;
-                if (!targetTime) {
-                    alert("도착 시간을 설정해주세요!");
-                    return;
-                }
-
-                // Map transport mode (UI uses 'subway' but API expects 'transit')
-                const apiTransport = transportMode;
-
-                // Send Coordinates Object with transport mode
-                await fetch('/api/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        start: startCoord,
-                        end: endCoord,
-                        time: targetTime,
-                        transport: apiTransport
-                    })
-                });
-
-                isRunning = true;
-                document.getElementById('mainBtn').classList.add('active');
-                document.getElementById('mainBtn').innerHTML = `<span>ABORT MISSION</span><span>⏹️</span>`;
-
-                // Switch status to "Calculating..."
-                document.getElementById('statusText').innerText = "경로 계산 중...";
-            }
-        }
-
-        // Calculate and display route preview when both points are set
-        async function previewRoute() {
-            if (!startCoord || !endCoord) return;
-
-            const apiTransport = transportMode;
-            document.getElementById('statusText').innerText = "🔄 경로 계산 중...";
-
-            try {
-                const res = await fetch('/api/route', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        start: startCoord,
-                        end: endCoord,
-                        transport: apiTransport
-                    })
-                });
-
-                const data = await res.json();
-                console.log('Route data:', data);
-
-                if (data.success && data.route) {
-                    const route = data.route;
-                    let statusMsg = '';
-                    
-                    if (route.mode === 'transit') {
-                        // 대중교통: 시간, 요금, 환승횟수, 도보시간 표시
-                        statusMsg = `🚇 ${route.minutes}분`;
-                        if (route.fare) statusMsg += ` | ${route.fare.toLocaleString()}원`;
-                        if (route.transfers !== undefined) statusMsg += ` | 환승 ${route.transfers}회`;
-                        if (route.walk_minutes) statusMsg += ` | 도보 ${route.walk_minutes}분`;
-                        if (route.path_type) statusMsg += ` (${route.path_type})`;
-                    } else if (route.mode === 'walk') {
-                        // 도보: 시간, 거리 표시
-                        statusMsg = `🚶 ${route.minutes}분 | ${route.distance}km`;
-                    } else {
-                        // 자동차: 시간, 거리 표시
-                        statusMsg = `🚗 ${route.minutes}분 | ${route.distance}km`;
-                    }
-                    
-                    document.getElementById('statusText').innerText = statusMsg;
-                    hasRoutePreview = true;  // Prevent checkStatus from overwriting
-                    
-                    // Store route info for later
-                    window.currentRoute = route;
-                } else {
-                    // Check for specific error types
-                    let errorMsg = "⚠️ 경로 계산 실패";
-                    if (data.error) {
-                        if (data.error.includes("429") || data.error.includes("QUOTA") || data.error.includes("Limit")) {
-                            errorMsg = "⚠️ API 호출 한도 초과 - 잠시 후 다시 시도해주세요";
-                        } else {
-                            errorMsg = "⚠️ " + data.error;
-                        }
-                    }
-                    document.getElementById('statusText').innerText = errorMsg;
-                    hasRoutePreview = false;
-                }
-            } catch (error) {
-                console.error('Route preview error:', error);
-                document.getElementById('statusText').innerText = "⚠️ 경로 조회 중 오류 발생";
-                hasRoutePreview = false;
-            }
-        }
-
-        async function checkStatus() {
-            try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-
-                isRunning = data.is_running;
-                const btn = document.getElementById('mainBtn');
-                const badge = document.getElementById('statusBadge');
-                const statusText = document.getElementById('statusText');
-                const thumb = document.getElementById('questThumb');
-
-                if (isRunning) {
-                    btn.classList.add('stop-btn');
-                    btn.innerHTML = '<span>ABORT MISSION</span><span>⏹️</span>';
-                    badge.classList.remove('hidden');
-                    hasRoutePreview = false;
-
-                    // Live Logic - Show wake up time breakdown
-                    if (data.latest_result) {
-                        const r = data.latest_result;
-                        
-                        if (r.is_late) {
-                            statusText.innerHTML = `
-                                <div style="color:#e63946;font-weight:bold;">🚨 지각 위험! ${r.delay}분 늦음</div>
-                                <div style="margin-top:4px;">⏰ 기상: ${r.wake_up_time} | 🚪 출발: ${r.leave_time} | 🏁 도착: ${r.arrival_time}</div>
-                            `;
-                            thumb.style.backgroundImage = `url('${THUMB_STORMY}')`;
-                        } else {
-                            statusText.innerHTML = `
-                                <div style="color:#2a9d8f;font-weight:bold;">⏰ 기상 시간: ${r.wake_up_time}</div>
-                                <div style="font-size:0.75rem;margin-top:4px;color:#b9ae9d;">
-                                    준비 ${r.prep_time}분 + 이동 ${r.travel_time}분 + 여유 ${r.buffer_time}분
-                                </div>
-                                <div style="font-size:0.75rem;color:#b9ae9d;">
-                                    🚪 출발: ${r.leave_time} → 🏁 도착: ${r.arrival_time}
-                                </div>
-                            `;
-                            thumb.style.backgroundImage = `url('${THUMB_SUNNY}')`;
-                        }
-                    } else {
-                        statusText.innerText = data.status || "경로 계산 중...";
-                    }
-                } else {
-                    btn.classList.remove('stop-btn');
-                    btn.innerHTML = '<span>START ADVENTURE</span><span>▶️</span>';
-                    badge.classList.add('hidden');
-                    
-                    // Don't overwrite route preview with default status
-                    if (!hasRoutePreview) {
-                        statusText.innerText = data.status || "Ready for assignment.";
-                        statusText.style.color = '#b9ae9d';
-                    }
-                }
-
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-    </script>
+<script src="/static/app.js"></script>
 </body>
-
 </html>
