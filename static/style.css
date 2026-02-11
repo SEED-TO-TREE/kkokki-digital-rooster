@@ -238,7 +238,7 @@ body {
 .map-wrapper {
     flex: 1;
     position: relative;
-    min-height: 100px;
+    min-height: 200px;
     overflow: hidden;
     border-top: 2px solid rgba(255,255,255,0.1);
     border-bottom: 2px solid rgba(255,255,255,0.1);
@@ -247,17 +247,41 @@ body {
 #map {
     position: absolute;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: #1a1a1a;
-    z-index: 0;
+    background: #e8e0d8;
+    z-index: 1;
+}
+
+/* Settings button on map screen */
+.map-settings-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1000;
+    background: rgba(24,21,17,0.85);
+    border: 2px solid var(--border-color);
+    color: white;
+    width: 36px; height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    box-shadow: var(--shadow-retro-sm);
+    transition: all 0.15s;
+}
+
+.map-settings-btn:hover {
+    background: var(--primary);
+    color: black;
+}
+
+.map-settings-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
 }
 
 .map-overlay-grid {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-    opacity: 0.2;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='white' stroke-width='0.5' opacity='0.05'/%3E%3C/svg%3E");
+    display: none;
 }
 
 .map-title {
@@ -265,7 +289,7 @@ body {
     top: 8px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 2;
+    z-index: 1000;
     background: rgba(24,21,17,0.85);
     border: 2px solid var(--border-color);
     padding: 3px 12px;
@@ -337,7 +361,6 @@ body {
     box-shadow: var(--shadow-retro);
     padding: 0.75rem;
     position: relative;
-    overflow: hidden;
 }
 
 .pixel-corner {
@@ -359,6 +382,7 @@ body {
 
 .quest-details {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -421,6 +445,33 @@ body {
     font-style: italic;
 }
 
+.route-set-btn {
+    background: var(--card-bg-light);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: var(--text-muted);
+    width: 28px; height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    padding: 0;
+}
+
+.route-set-btn:hover,
+.route-set-btn:active {
+    background: rgba(238,160,43,0.2);
+    border-color: var(--primary);
+}
+
+.route-row.selecting .route-set-btn {
+    background: rgba(238,160,43,0.15);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
 .swap-btn {
     position: absolute;
     right: 6px;
@@ -449,27 +500,35 @@ body {
 .quest-stat {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    justify-content: space-between;
     color: var(--primary);
     font-weight: 700;
     font-size: 0.85rem;
+    background: rgba(238,160,43,0.1);
+    border: 1px solid rgba(238,160,43,0.3);
+    padding: 0.4rem 0.6rem;
+    margin-top: 0.5rem;
 }
 
 .time-input {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.4);
+    border: 2px solid var(--primary);
     color: white;
     font-family: 'Space Grotesk';
-    font-size: 0.9rem;
-    padding: 2px 4px;
-    width: 80px;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    font-weight: 700;
+    width: auto;
+    min-width: 0;
 }
 
 .quest-stat-label {
     color: var(--text-muted);
-    font-size: 0.7rem;
-    font-weight: 400;
+    font-size: 0.75rem;
+    font-weight: 600;
     letter-spacing: 0.1em;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .quest-status-text {
@@ -539,7 +598,6 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    transform: translateY(-100%);
 }
 
 .pin-body {
@@ -569,22 +627,41 @@ body {
 .pin-search { background: var(--primary) !important; }
 .pin-number { font-size: 11px; font-weight: bold; color: black; }
 
-/* Leaflet overrides */
-.leaflet-popup-content-wrapper {
-    background: var(--card-bg);
-    color: white;
-    border: 2px solid var(--border-color);
-    border-radius: 0;
-    box-shadow: var(--shadow-retro);
+/* MapLibre overrides */
+.maplibregl-ctrl-group {
+    border: 2px solid var(--border-color) !important;
+    box-shadow: var(--shadow-retro-sm) !important;
+    border-radius: 0 !important;
 }
-.leaflet-popup-content { margin: 8px; font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem; }
-.leaflet-popup-content b { color: var(--primary); }
-.leaflet-popup-content small { color: var(--text-muted); }
-.leaflet-popup-tip { background: var(--card-bg); border: 2px solid var(--border-color); }
-.leaflet-control-zoom { border: 2px solid var(--border-color) !important; box-shadow: var(--shadow-retro-sm) !important; }
-.leaflet-control-zoom a { background: var(--card-bg) !important; color: white !important; border: none !important; border-bottom: 1px solid rgba(255,255,255,0.2) !important; }
-.leaflet-control-zoom a:hover { background: var(--primary) !important; color: black !important; }
-.leaflet-control-zoom a:last-child { border-bottom: none !important; }
+.maplibregl-ctrl-group button {
+    background: var(--card-bg) !important;
+    color: white !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.2) !important;
+    width: 32px !important;
+    height: 32px !important;
+}
+.maplibregl-ctrl-group button:hover {
+    background: var(--primary) !important;
+    color: black !important;
+}
+.maplibregl-ctrl-group button:last-child {
+    border-bottom: none !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+    filter: invert(1);
+}
+.maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
+    filter: invert(0);
+}
+.maplibregl-ctrl-attrib {
+    background: rgba(24,21,17,0.7) !important;
+    color: var(--text-dim) !important;
+    font-size: 0.6rem !important;
+}
+.maplibregl-ctrl-attrib a {
+    color: var(--text-muted) !important;
+}
 
 
 /* ═══════════════════════════════════════════════════════════
@@ -610,6 +687,25 @@ body {
     letter-spacing: 0.15em;
     color: white;
     text-transform: uppercase;
+}
+
+.back-to-map-btn {
+    background: none;
+    border: 2px solid var(--border-color);
+    color: white;
+    font-size: 1.2rem;
+    width: 36px; height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-retro-sm);
+    flex-shrink: 0;
+}
+
+.back-to-map-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
 }
 
 .hamburger-btn {
@@ -673,15 +769,7 @@ body {
     opacity: 0.9;
 }
 
-.scene-char {
-    position: relative;
-    z-index: 2;
-    max-width: 60%;
-    max-height: 80%;
-    image-rendering: pixelated;
-    object-fit: contain;
-    filter: drop-shadow(3px 3px 0 rgba(0,0,0,0.5));
-}
+/* scene-char removed — chicken image had fake transparency */
 
 .character-scene.shake {
     animation: shake 0.4s infinite;

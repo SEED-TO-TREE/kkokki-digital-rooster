@@ -25,6 +25,7 @@ class KkokkiEngine:
         # Configurable settings (can be updated at runtime via /api/start)
         self.prep_time = 30       # minutes to get ready
         self.buffer_time = 10     # extra buffer minutes
+        self.check_count = 5      # number of route checks during monitoring
         self.early_warning_enabled = False
         self.early_warning_minutes = 5
         self.urgent_alert_enabled = True
@@ -278,11 +279,23 @@ class KkokkiEngine:
     # ─── AI & Notifications ────────────────────────────────────
 
     def generate_delay_message(self, start, end, target_time, delay_min):
-        prompt = f"""
-        사용자가 현재 교통 정체로 인해 지각이 예상됩니다.
-        상황: {start}에서 {end}로 이동 중이며, 목표 도착 시간은 {target_time}이지만 약 {delay_min}분 지연 예상.
-        팀원들에게 보낼 간결한 슬랙 메시지를 한국어로 작성해줘 (이모지 포함).
-        """
+        now = datetime.now()
+        eta = now + timedelta(minutes=delay_min)
+        eta_str = eta.strftime("%H:%M")
+        prompt = f"""슬랙 지각 알림 메시지를 딱 1개만 작성해줘. 아래 규칙을 반드시 따라:
+
+- 한국어, 반말(편한 톤), 이모지 적당히 사용
+- 옵션이나 대안 없이 메시지 1개만 출력
+- "옵션", "---", "**옵션" 같은 구분 절대 금지
+- 5줄 이내로 간결하게
+- 출발지/도착지/지연시간/새 도착예상시간 포함
+
+상황:
+- 출발: {start}
+- 도착: {end}
+- 원래 도착 예정: {target_time}
+- 지연: 약 {delay_min}분
+- 새 도착 예상: {eta_str}"""
         try:
             if hasattr(self, 'model'):
                 response = self.model.generate_content(prompt)
@@ -324,14 +337,15 @@ class KkokkiEngine:
 
     def start_monitoring(self, start_name, end_name, arrival_time, transport_mode='car'):
         if self.is_running:
-            self.log("Already running.")
-            return
+            self.log("Restarting with new settings...")
+            self.stop_monitoring()
 
         self.is_running = True
         self.status = "INITIALIZING"
         self.transport_mode = transport_mode
         self.slack_sent = False
         self.alarm_dismissed = False
+        self.latest_result = None  # Clear stale data from previous run
 
         mode_names = {'car': 'Driving', 'transit': 'Transit', 'walk': 'Walking'}
         mode_display = mode_names.get(transport_mode, transport_mode)
@@ -408,8 +422,9 @@ class KkokkiEngine:
                             "buffer_time": self.buffer_time,
                             "is_late": is_late,
                             "delay": delay,
-                            "seconds_until_departure": max(0, int(seconds_until_departure)),
-                            "seconds_until_wake": max(0, int(seconds_until_wake)),
+                            # Absolute timestamps (ISO) — client calculates countdown locally
+                            "wake_up_iso": wake_up_time.isoformat(),
+                            "departure_iso": departure_time.isoformat(),
                             "early_warning_active": early_warning_active,
                         }
                         self.latest_result = result
@@ -433,8 +448,15 @@ class KkokkiEngine:
                     except Exception as e:
                         self.log(f"Monitor error: {e}")
 
-                    # Sleep 60s, checking stop flag each second
-                    for _ in range(60):
+                    # Smart sleep: divide remaining time by check_count
+                    remaining = max(0, int(seconds_until_wake)) if not is_late else 0
+                    if remaining > 0 and self.check_count > 0:
+                        sleep_seconds = max(60, remaining // self.check_count)
+                    else:
+                        sleep_seconds = 60  # When late, check every 60s
+
+                    self.log(f"Next check in {sleep_seconds // 60}min {sleep_seconds % 60}s")
+                    for _ in range(sleep_seconds):
                         if not self.is_running:
                             break
                         time.sleep(1)

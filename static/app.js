@@ -9,14 +9,15 @@ const ASSETS = {
     bgStormy: '/static/assets/bg_home_stormy_delay_1769947430952.png',
     charIdle: '/static/assets/char_kkokki_idle_1769947451923.png',
     charPanic: '/static/assets/char_kkokki_panic_1769947468467.png',
-    bgm1: '/static/assets/bgm_1.mp3',
-    bgm2: '/static/assets/bgm_2.mp3',
-    bgm3: '/static/assets/bgm_3.mp3',
+    bgm_1: '/static/assets/alarm_custom.mp3',
+    bgm_2: '/static/assets/bgm_2.mp3',
+    bgm_3: '/static/assets/bgm_3.mp3',
 };
 
 // ─── State ────────────────────────────────────────────────
 const State = {
     currentScreen: 'map',
+    previousScreen: 'map',
     isRunning: false,
     transportMode: 'car',
     selectionMode: 'start',  // 'start' or 'end'
@@ -28,7 +29,7 @@ const State = {
     map: null,
     searchMarkers: [],
     routeMarkers: { start: null, end: null },
-    routeLines: [],
+    // Route lines managed via MapLibre sources/layers
 
     // Monitor data (from server)
     latestResult: null,
@@ -36,6 +37,7 @@ const State = {
     // Alarm
     alarmTriggered: false,
     earlyWarningShown: false,
+    wakeCountdownStartedPositive: false,  // True once we've seen seconds_until_wake > 0
     alarmAudio: null,
     audioContext: null,
 
@@ -51,8 +53,9 @@ const State = {
 
 // ─── Settings (persisted to localStorage) ─────────────────
 const DEFAULT_SETTINGS = {
-    bufferTime: 30,
     prepTime: 30,
+    bufferTime: 30,
+    checkCount: 5,
     earlyWarning: false,
     urgentAlert: true,
     selectedBGM: 'bgm_1',
@@ -77,6 +80,7 @@ function saveSettings() {
    ═══════════════════════════════════════════════════════════ */
 
 function showScreen(name) {
+    State.previousScreen = State.currentScreen;
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const target = document.getElementById('screen-' + name);
     if (target) target.classList.add('active');
@@ -84,7 +88,7 @@ function showScreen(name) {
 
     // Screen-specific hooks
     if (name === 'map' && State.map) {
-        setTimeout(() => State.map.invalidateSize(), 150);
+        setTimeout(() => State.map.resize(), 100);
     }
     if (name === 'settings') {
         populateSettingsUI();
@@ -103,26 +107,41 @@ function showScreen(name) {
    ═══════════════════════════════════════════════════════════ */
 
 function initMap() {
-    State.map = L.map('map', { zoomControl: false });
-    State.map.setView([37.5665, 126.9780], 13);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap',
-        maxZoom: 19
-    }).addTo(State.map);
-
-    L.control.zoom({ position: 'bottomright' }).addTo(State.map);
-
-    // Fix tile loading
-    setTimeout(() => { State.map.invalidateSize(); }, 200);
-    setTimeout(() => { State.map.invalidateSize(); }, 500);
-    window.addEventListener('resize', () => {
-        setTimeout(() => { if (State.map) State.map.invalidateSize(); }, 100);
+    State.map = new maplibregl.Map({
+        container: 'map',
+        style: {
+            version: 8,
+            sources: {
+                'carto-voyager': {
+                    type: 'raster',
+                    tiles: [
+                        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+                        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+                        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+                        'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+                    ],
+                    tileSize: 256,
+                    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+                }
+            },
+            layers: [{
+                id: 'carto-voyager-layer',
+                type: 'raster',
+                source: 'carto-voyager',
+                minzoom: 0,
+                maxzoom: 19
+            }]
+        },
+        center: [126.9780, 37.5665],
+        zoom: 13
     });
+
+    State.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
     // Map click → set location
     State.map.on('click', async (e) => {
-        const { lat, lng: lon } = e.latlng;
+        const lat = e.lngLat.lat;
+        const lon = e.lngLat.lng;
         const place = { name: 'Selected Location', lat, lon, address: `${lat.toFixed(5)}, ${lon.toFixed(5)}` };
         try {
             const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
@@ -131,28 +150,19 @@ function initMap() {
                 place.name = data.name || 'Selected Location';
                 place.address = data.address || place.address;
             }
-        } catch (e) { /* use defaults */ }
+        } catch (err) { /* use defaults */ }
         selectPlace(place);
-    });
-
-    // Close dropdown on map click
-    State.map.on('click', () => {
         document.getElementById('searchResults').classList.remove('active');
     });
 }
 
-function createPinIcon(label, type) {
+function createPinElement(label, type) {
     const cls = type === 'start' ? 'pin-start' : 'pin-end';
-    const emoji = type === 'start' ? '&#x1F680;' : '&#x1F3C1;';
-    return L.divIcon({
-        html: `<div class="custom-pin ${cls}">
-            <div class="pin-body"><span style="font-size:14px">${emoji}</span></div>
-            <div class="pin-label">${label}</div>
-        </div>`,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 40]
-    });
+    const emoji = type === 'start' ? '\u{1F680}' : '\u{1F3C1}';
+    const el = document.createElement('div');
+    el.className = `custom-pin ${cls}`;
+    el.innerHTML = `<div class="pin-body"><span style="font-size:14px">${emoji}</span></div><div class="pin-label">${label}</div>`;
+    return el;
 }
 
 function selectPlace(place) {
@@ -163,25 +173,25 @@ function selectPlace(place) {
         State.startCoord = place;
         document.getElementById('startDisplay').innerText = place.name;
         document.getElementById('startDisplay').classList.remove('empty');
-        if (State.routeMarkers.start) State.map.removeLayer(State.routeMarkers.start);
-        State.routeMarkers.start = L.marker([place.lat, place.lon], {
-            icon: createPinIcon('START', 'start'), zIndexOffset: 1000
-        }).addTo(State.map);
-        State.map.flyTo([place.lat, place.lon], 15, { duration: 0.5 });
+        if (State.routeMarkers.start) State.routeMarkers.start.remove();
+        State.routeMarkers.start = new maplibregl.Marker({ element: createPinElement('START', 'start') })
+            .setLngLat([place.lon, place.lat])
+            .addTo(State.map);
+        State.map.flyTo({ center: [place.lon, place.lat], zoom: 15, duration: 500 });
         setSelectionMode('end');
         setTimeout(() => document.getElementById('searchInput').focus(), 600);
     } else {
         State.endCoord = place;
         document.getElementById('endDisplay').innerText = place.name;
         document.getElementById('endDisplay').classList.remove('empty');
-        if (State.routeMarkers.end) State.map.removeLayer(State.routeMarkers.end);
-        State.routeMarkers.end = L.marker([place.lat, place.lon], {
-            icon: createPinIcon('END', 'end'), zIndexOffset: 1000
-        }).addTo(State.map);
+        if (State.routeMarkers.end) State.routeMarkers.end.remove();
+        State.routeMarkers.end = new maplibregl.Marker({ element: createPinElement('END', 'end') })
+            .setLngLat([place.lon, place.lat])
+            .addTo(State.map);
     }
 
     // Clear search markers
-    State.searchMarkers.forEach(m => State.map.removeLayer(m));
+    State.searchMarkers.forEach(m => m.remove());
     State.searchMarkers = [];
 
     // Preview route if both set
@@ -192,10 +202,10 @@ function selectPlace(place) {
 
     // Fit bounds when both markers exist
     if (State.routeMarkers.start && State.routeMarkers.end) {
-        const bounds = L.latLngBounds();
-        bounds.extend(State.routeMarkers.start.getLatLng());
-        bounds.extend(State.routeMarkers.end.getLatLng());
-        setTimeout(() => State.map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14 }), 300);
+        const bounds = new maplibregl.LngLatBounds();
+        bounds.extend(State.routeMarkers.start.getLngLat());
+        bounds.extend(State.routeMarkers.end.getLngLat());
+        setTimeout(() => State.map.fitBounds(bounds, { padding: 80, maxZoom: 14 }), 300);
     }
 }
 
@@ -234,7 +244,7 @@ async function performSearch() {
     const query = document.getElementById('searchInput').value.trim();
     const resultList = document.getElementById('searchResults');
 
-    State.searchMarkers.forEach(m => State.map.removeLayer(m));
+    State.searchMarkers.forEach(m => m.remove());
     State.searchMarkers = [];
 
     if (!query || query.length < 2) {
@@ -256,18 +266,24 @@ async function performSearch() {
         }
 
         resultList.innerHTML = '';
-        const bounds = L.latLngBounds();
+        const bounds = new maplibregl.LngLatBounds();
 
         data.results.forEach((place, i) => {
             // Map marker
-            const icon = L.divIcon({
-                html: `<div class="custom-pin search-result-pin"><div class="pin-body pin-search"><span class="pin-number">${i + 1}</span></div></div>`,
-                className: '', iconSize: [30, 30], iconAnchor: [15, 30]
+            const el = document.createElement('div');
+            el.className = 'custom-pin search-result-pin';
+            el.innerHTML = `<div class="pin-body pin-search"><span class="pin-number">${i + 1}</span></div>`;
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectPlace(place);
+                State.map.flyTo({ center: [place.lon, place.lat], zoom: 16 });
             });
-            const marker = L.marker([place.lat, place.lon], { icon }).addTo(State.map);
-            marker.on('click', () => { selectPlace(place); State.map.setView([place.lat, place.lon], 16); });
+            const marker = new maplibregl.Marker({ element: el })
+                .setLngLat([place.lon, place.lat])
+                .addTo(State.map);
             State.searchMarkers.push(marker);
-            bounds.extend([place.lat, place.lon]);
+            bounds.extend([place.lon, place.lat]);
 
             // Dropdown item
             const item = document.createElement('div');
@@ -280,13 +296,16 @@ async function performSearch() {
                 </div>
                 <span class="item-select-hint">${State.selectionMode === 'start' ? 'START' : 'DEST'}</span>
             `;
-            item.addEventListener('click', () => { selectPlace(place); State.map.setView([place.lat, place.lon], 16); });
+            item.addEventListener('click', () => {
+                selectPlace(place);
+                State.map.flyTo({ center: [place.lon, place.lat], zoom: 16 });
+            });
             resultList.appendChild(item);
         });
 
-        if (State.routeMarkers.start) bounds.extend(State.routeMarkers.start.getLatLng());
-        if (State.routeMarkers.end) bounds.extend(State.routeMarkers.end.getLatLng());
-        if (bounds.isValid()) State.map.fitBounds(bounds, { padding: [50, 200] });
+        if (State.routeMarkers.start) bounds.extend(State.routeMarkers.start.getLngLat());
+        if (State.routeMarkers.end) bounds.extend(State.routeMarkers.end.getLngLat());
+        if (!bounds.isEmpty()) State.map.fitBounds(bounds, { padding: { top: 50, bottom: 200, left: 50, right: 50 } });
 
     } catch (err) {
         resultList.innerHTML = '<div class="search-no-results">Search error</div>';
@@ -349,43 +368,68 @@ async function previewRoute() {
 }
 
 function drawRoutePolyline(coordinates, mode) {
-    // Remove old lines
-    State.routeLines.forEach(l => State.map.removeLayer(l));
-    State.routeLines = [];
+    removeRouteLines();
 
     if (!coordinates || coordinates.length === 0 || mode === 'transit') {
         drawFallbackLine();
         return;
     }
 
-    // TMap returns [lon, lat] pairs — Leaflet needs [lat, lon]
-    const latLngs = coordinates.map(c => [c[1], c[0]]);
+    // TMap returns [lon, lat] — MapLibre also uses [lng, lat], no flip needed
+    const geojson = {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates }
+    };
+
+    State.map.addSource('route', { type: 'geojson', data: geojson });
 
     // Shadow line
-    const shadow = L.polyline(latLngs, {
-        color: '#000', weight: 7, opacity: 0.4
-    }).addTo(State.map);
-    State.routeLines.push(shadow);
+    State.map.addLayer({
+        id: 'route-shadow',
+        type: 'line',
+        source: 'route',
+        paint: { 'line-color': '#000', 'line-width': 7, 'line-opacity': 0.4 }
+    });
 
     // Main line
-    const main = L.polyline(latLngs, {
-        color: '#eea02b', weight: 4, opacity: 0.9, lineCap: 'round', lineJoin: 'round'
-    }).addTo(State.map);
-    State.routeLines.push(main);
+    State.map.addLayer({
+        id: 'route-main',
+        type: 'line',
+        source: 'route',
+        paint: { 'line-color': '#eea02b', 'line-width': 4, 'line-opacity': 0.9 },
+        layout: { 'line-cap': 'round', 'line-join': 'round' }
+    });
+}
+
+function removeRouteLines() {
+    ['route-main', 'route-shadow'].forEach(id => {
+        if (State.map.getLayer(id)) State.map.removeLayer(id);
+    });
+    if (State.map.getSource('route')) State.map.removeSource('route');
 }
 
 function drawFallbackLine() {
-    State.routeLines.forEach(l => State.map.removeLayer(l));
-    State.routeLines = [];
+    removeRouteLines();
 
     if (!State.routeMarkers.start || !State.routeMarkers.end) return;
-    const s = State.routeMarkers.start.getLatLng();
-    const e = State.routeMarkers.end.getLatLng();
+    const s = State.routeMarkers.start.getLngLat();
+    const e = State.routeMarkers.end.getLngLat();
 
-    const line = L.polyline([s, e], {
-        color: '#eea02b', weight: 4, opacity: 0.8, dashArray: '10,10', lineCap: 'round'
-    }).addTo(State.map);
-    State.routeLines.push(line);
+    State.map.addSource('route', {
+        type: 'geojson',
+        data: {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[s.lng, s.lat], [e.lng, e.lat]] }
+        }
+    });
+
+    State.map.addLayer({
+        id: 'route-main',
+        type: 'line',
+        source: 'route',
+        paint: { 'line-color': '#eea02b', 'line-width': 4, 'line-opacity': 0.8, 'line-dasharray': [10, 10] },
+        layout: { 'line-cap': 'round' }
+    });
 }
 
 function swapLocations() {
@@ -402,11 +446,22 @@ function swapLocations() {
     ed.innerText = tempText;
     ed.classList.toggle('empty', tempEmpty);
 
-    const tempMarker = State.routeMarkers.start;
-    State.routeMarkers.start = State.routeMarkers.end;
-    State.routeMarkers.end = tempMarker;
-    if (State.routeMarkers.start) State.routeMarkers.start.setIcon(createPinIcon('START', 'start'));
-    if (State.routeMarkers.end) State.routeMarkers.end.setIcon(createPinIcon('END', 'end'));
+    // Recreate markers with swapped labels
+    const startLngLat = State.routeMarkers.start ? State.routeMarkers.start.getLngLat() : null;
+    const endLngLat = State.routeMarkers.end ? State.routeMarkers.end.getLngLat() : null;
+    if (State.routeMarkers.start) State.routeMarkers.start.remove();
+    if (State.routeMarkers.end) State.routeMarkers.end.remove();
+    State.routeMarkers.start = null;
+    State.routeMarkers.end = null;
+
+    if (endLngLat) {
+        State.routeMarkers.start = new maplibregl.Marker({ element: createPinElement('START', 'start') })
+            .setLngLat(endLngLat).addTo(State.map);
+    }
+    if (startLngLat) {
+        State.routeMarkers.end = new maplibregl.Marker({ element: createPinElement('END', 'end') })
+            .setLngLat(startLngLat).addTo(State.map);
+    }
 
     if (State.startCoord && State.endCoord) previewRoute();
 }
@@ -439,6 +494,7 @@ async function startAdventure() {
                 transport: State.transportMode,
                 prep_time: Settings.prepTime,
                 buffer_time: Settings.bufferTime,
+                check_count: Settings.checkCount,
                 early_warning: Settings.earlyWarning,
                 urgent_alert: Settings.urgentAlert,
             })
@@ -446,6 +502,8 @@ async function startAdventure() {
         State.isRunning = true;
         State.alarmTriggered = false;
         State.earlyWarningShown = false;
+        State.wakeCountdownStartedPositive = false;  // Reset alarm transition tracking
+        State.latestResult = null;  // Clear stale data from previous run
         requestWakeLock();
         showScreen('main');
         updateToggleUI(true);
@@ -486,8 +544,11 @@ function updateMainScreen() {
     if (!State.latestResult) return;
     const r = State.latestResult;
 
-    // Countdown to departure
-    const secs = r.seconds_until_departure || 0;
+    // Calculate countdown from absolute timestamps (no server dependency)
+    const now = Date.now();
+    const depMs = r.departure_iso ? new Date(r.departure_iso).getTime() : 0;
+    const secs = Math.max(0, Math.floor((depMs - now) / 1000));
+
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
@@ -502,18 +563,15 @@ function updateMainScreen() {
     // ETA
     document.getElementById('etaDisplay').innerText = `CURRENT ETA: ${r.arrival_time || '--:--'}`;
 
-    // Character state
+    // Scene background state
     const scene = document.getElementById('characterScene');
     const bg = document.getElementById('sceneBg');
-    const char = document.getElementById('sceneChar');
 
     if (r.is_late) {
         bg.src = ASSETS.bgStormy;
-        char.src = ASSETS.charPanic;
         scene.classList.add('shake');
     } else {
         bg.src = ASSETS.bgSunny;
-        char.src = ASSETS.charIdle;
         scene.classList.remove('shake');
     }
 }
@@ -553,14 +611,25 @@ function checkAlarmTrigger(data) {
     if (!data.is_running || !data.latest_result) return;
     const r = data.latest_result;
 
+    if (!r.wake_up_iso) return;
+
+    const now = Date.now();
+    const wakeMs = new Date(r.wake_up_iso).getTime();
+    const secsUntilWake = (wakeMs - now) / 1000;
+
     // Early warning
     if (r.early_warning_active && !State.earlyWarningShown && State.currentScreen !== 'alarm') {
         State.earlyWarningShown = true;
         showEarlyWarning();
     }
 
-    // Main alarm trigger: wake time has been reached (seconds_until_wake === 0)
-    if (r.seconds_until_wake === 0 && !State.alarmTriggered) {
+    // Track if wake time is in the future (countdown started positive)
+    if (secsUntilWake > 0) {
+        State.wakeCountdownStartedPositive = true;
+    }
+
+    // Alarm fires only when countdown transitions through zero
+    if (secsUntilWake <= 0 && State.wakeCountdownStartedPositive && !State.alarmTriggered) {
         State.alarmTriggered = true;
         showScreen('alarm');
     }
@@ -613,7 +682,7 @@ function startAlarmSequence() {
 
 function playAlarmBGM() {
     stopAlarmBGM();
-    const bgmFile = ASSETS[Settings.selectedBGM] || ASSETS.bgm1;
+    const bgmFile = ASSETS[Settings.selectedBGM] || ASSETS.bgm_1;
     State.alarmAudio = new Audio(bgmFile);
     State.alarmAudio.loop = true;
     State.alarmAudio.play().catch(() => {
@@ -657,9 +726,20 @@ function dismissAlarm() {
    ═══════════════════════════════════════════════════════════ */
 
 function populateSettingsUI() {
+    // Prep Time
+    const prepSlider = document.getElementById('prepSlider');
+    prepSlider.value = Settings.prepTime;
+    document.getElementById('prepValue').innerText = Settings.prepTime;
+
+    // Buffer Time
     const slider = document.getElementById('bufferSlider');
     slider.value = Settings.bufferTime;
     document.getElementById('bufferValue').innerText = Settings.bufferTime;
+
+    // Check Count
+    const checkSlider = document.getElementById('checkCountSlider');
+    checkSlider.value = Settings.checkCount;
+    document.getElementById('checkCountValue').innerText = Settings.checkCount;
 
     document.querySelectorAll('input[name="bgm"]').forEach(r => {
         r.checked = (r.value === Settings.selectedBGM);
@@ -674,6 +754,15 @@ function populateSettingsUI() {
 }
 
 function bindSettingsEvents() {
+    // Prep Time slider
+    const prepSlider = document.getElementById('prepSlider');
+    prepSlider.addEventListener('input', () => {
+        Settings.prepTime = parseInt(prepSlider.value);
+        document.getElementById('prepValue').innerText = Settings.prepTime;
+        updateWakeTimePreview();
+        saveSettings();
+    });
+
     // Buffer slider
     const slider = document.getElementById('bufferSlider');
     slider.addEventListener('input', () => {
@@ -683,12 +772,25 @@ function bindSettingsEvents() {
         saveSettings();
     });
 
-    // BGM radio
-    document.querySelectorAll('input[name="bgm"]').forEach(r => {
-        r.addEventListener('change', () => {
-            Settings.selectedBGM = r.value;
+    // Check Count slider
+    const checkSlider = document.getElementById('checkCountSlider');
+    checkSlider.addEventListener('input', () => {
+        Settings.checkCount = parseInt(checkSlider.value);
+        document.getElementById('checkCountValue').innerText = Settings.checkCount;
+        saveSettings();
+    });
+
+    // BGM item selection (click on the row to select)
+    document.querySelectorAll('.bgm-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            // Don't select if clicking the preview button
+            if (e.target.closest('.bgm-preview-btn')) return;
+            const radio = item.querySelector('input[type="radio"]');
+            if (!radio || radio.disabled) return;
+            radio.checked = true;
+            Settings.selectedBGM = radio.value;
             document.querySelectorAll('.bgm-item').forEach(i => i.classList.remove('active'));
-            r.closest('.bgm-item').classList.add('active');
+            item.classList.add('active');
             saveSettings();
         });
     });
@@ -699,7 +801,7 @@ function bindSettingsEvents() {
             e.preventDefault();
             e.stopPropagation();
             const bgmKey = btn.dataset.bgm;
-            previewBGM(bgmKey);
+            toggleBGMPreview(bgmKey, btn);
         });
     });
 
@@ -713,10 +815,11 @@ function bindSettingsEvents() {
         saveSettings();
     });
 
-    // Back button
+    // Back button - go back to the screen that opened settings
     document.getElementById('settingsBackBtn').addEventListener('click', () => {
         stopBGMPreview();
-        showScreen('main');
+        const backTo = State.previousScreen === 'settings' ? 'map' : State.previousScreen;
+        showScreen(backTo);
     });
 }
 
@@ -741,20 +844,46 @@ function updateWakeTimePreview() {
         `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${ampm}`;
 }
 
-function previewBGM(bgmKey) {
-    stopBGMPreview();
-    const src = ASSETS[bgmKey] || ASSETS.bgm1;
+function toggleBGMPreview(bgmKey, btn) {
+    // If already playing, stop it
+    if (State.bgmPreviewAudio) {
+        stopBGMPreview();
+        return;
+    }
+    const src = ASSETS[bgmKey] || ASSETS.bgm_1;
     State.bgmPreviewAudio = new Audio(src);
-    State.bgmPreviewAudio.play().catch(() => {});
-    // Auto-stop after 5 seconds
-    setTimeout(() => stopBGMPreview(), 5000);
+    State.bgmPreviewAudio.volume = 1.0;
+
+    // Update button to show stop icon
+    if (btn) btn.innerHTML = '&#x25A0;';
+
+    State.bgmPreviewAudio.play().then(() => {
+        // Auto-stop after 5 seconds
+        State._bgmPreviewTimeout = setTimeout(() => stopBGMPreview(), 5000);
+    }).catch((err) => {
+        console.warn('BGM preview play failed:', err);
+        // Reset button
+        if (btn) btn.innerHTML = '&#x25B6;';
+        State.bgmPreviewAudio = null;
+    });
+
+    State.bgmPreviewAudio.addEventListener('ended', () => stopBGMPreview());
 }
 
 function stopBGMPreview() {
+    if (State._bgmPreviewTimeout) {
+        clearTimeout(State._bgmPreviewTimeout);
+        State._bgmPreviewTimeout = null;
+    }
     if (State.bgmPreviewAudio) {
         State.bgmPreviewAudio.pause();
+        State.bgmPreviewAudio.currentTime = 0;
         State.bgmPreviewAudio = null;
     }
+    // Reset all preview buttons back to play icon
+    document.querySelectorAll('.bgm-preview-btn').forEach(b => {
+        b.innerHTML = '&#x25B6;';
+    });
 }
 
 
@@ -768,7 +897,41 @@ async function pollStatus() {
         const data = await res.json();
 
         State.isRunning = data.is_running;
-        State.latestResult = data.latest_result;
+
+        // Smart merge: don't overwrite local countdown if the difference is small
+        // (prevents oscillation between server value and locally decremented value)
+        if (data.latest_result) {
+            if (State.latestResult) {
+                const serverWake = data.latest_result.seconds_until_wake;
+                const localWake = State.latestResult.seconds_until_wake;
+                const serverDep = data.latest_result.seconds_until_departure;
+                const localDep = State.latestResult.seconds_until_departure;
+
+                // Only adopt server time values if they differ by more than 5 seconds
+                // (meaning the route was recalculated with a new travel time)
+                if (Math.abs(serverWake - localWake) > 5) {
+                    State.latestResult.seconds_until_wake = serverWake;
+                }
+                if (Math.abs(serverDep - localDep) > 5) {
+                    State.latestResult.seconds_until_departure = serverDep;
+                }
+
+                // Always update non-time fields from server
+                State.latestResult.travel_minutes = data.latest_result.travel_minutes;
+                State.latestResult.distance = data.latest_result.distance;
+                State.latestResult.wake_up_time = data.latest_result.wake_up_time;
+                State.latestResult.leave_time = data.latest_result.leave_time;
+                State.latestResult.arrival_time = data.latest_result.arrival_time;
+                State.latestResult.prep_time = data.latest_result.prep_time;
+                State.latestResult.buffer_time = data.latest_result.buffer_time;
+                State.latestResult.is_late = data.latest_result.is_late;
+                State.latestResult.delay = data.latest_result.delay;
+                State.latestResult.early_warning_active = data.latest_result.early_warning_active;
+            } else {
+                // First result — accept fully
+                State.latestResult = data.latest_result;
+            }
+        }
 
         // Update main screen if visible
         if (State.currentScreen === 'main' && data.is_running) {
@@ -776,9 +939,9 @@ async function pollStatus() {
             updateLogs(data.logs);
         }
 
-        // Check alarm trigger
-        if (data.is_running) {
-            checkAlarmTrigger(data);
+        // Check alarm trigger (use State.latestResult which has merged values)
+        if (data.is_running && State.latestResult) {
+            checkAlarmTrigger({ is_running: data.is_running, latest_result: State.latestResult });
         }
 
         // If monitoring stopped externally
@@ -800,15 +963,17 @@ function startCountdownTick() {
         if (State.currentScreen !== 'main' || !State.latestResult) return;
 
         const r = State.latestResult;
-        if (r.seconds_until_departure > 0) {
-            r.seconds_until_departure = Math.max(0, r.seconds_until_departure - 1);
-        }
+        // Decrement locally (can go negative — that's fine)
+        r.seconds_until_departure -= 1;
+        r.seconds_until_wake -= 1;
+
+        // Track transition through zero for alarm
         if (r.seconds_until_wake > 0) {
-            r.seconds_until_wake = Math.max(0, r.seconds_until_wake - 1);
+            State.wakeCountdownStartedPositive = true;
         }
 
-        // Client-side alarm check
-        if (r.seconds_until_wake === 0 && !State.alarmTriggered) {
+        // Client-side alarm check: only fire if countdown transitioned through zero
+        if (r.seconds_until_wake <= 0 && State.wakeCountdownStartedPositive && !State.alarmTriggered) {
             State.alarmTriggered = true;
             showScreen('alarm');
         }
@@ -892,13 +1057,35 @@ function bindUIEvents() {
     });
 
     // Route row selection
-    document.getElementById('rowStart').addEventListener('click', () => {
+    document.getElementById('rowStart').addEventListener('click', (e) => {
+        if (e.target.closest('.route-set-btn')) return;
         setSelectionMode('start');
         searchInput.focus();
     });
-    document.getElementById('rowEnd').addEventListener('click', () => {
+    document.getElementById('rowEnd').addEventListener('click', (e) => {
+        if (e.target.closest('.route-set-btn')) return;
         setSelectionMode('end');
         searchInput.focus();
+    });
+
+    // Set location buttons
+    document.getElementById('setStartBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        setSelectionMode('start');
+        searchInput.focus();
+        searchInput.value = '';
+        const rl = document.getElementById('searchResults');
+        rl.innerHTML = '<div class="search-hint">Search or tap map to set start point</div>';
+        rl.classList.add('active');
+    });
+    document.getElementById('setEndBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        setSelectionMode('end');
+        searchInput.focus();
+        searchInput.value = '';
+        const rl = document.getElementById('searchResults');
+        rl.innerHTML = '<div class="search-hint">Search or tap map to set destination</div>';
+        rl.classList.add('active');
     });
 
     // Swap
@@ -915,8 +1102,14 @@ function bindUIEvents() {
     // Start adventure
     document.getElementById('startAdventureBtn').addEventListener('click', startAdventure);
 
-    // Hamburger menu → settings
+    // Back to map (from main screen)
+    document.getElementById('backToMapBtn').addEventListener('click', () => showScreen('map'));
+
+    // Hamburger menu → settings (from main screen)
     document.getElementById('menuBtn').addEventListener('click', () => showScreen('settings'));
+
+    // Settings button on map screen
+    document.getElementById('mapSettingsBtn').addEventListener('click', () => showScreen('settings'));
 
     // Monitor toggle (ON/OFF)
     document.getElementById('monitorToggle').addEventListener('click', () => {

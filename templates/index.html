@@ -16,11 +16,9 @@
     <!-- Styles -->
     <link rel="stylesheet" href="/static/style.css">
 
-    <!-- Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRS9BMY=" crossorigin="">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- MapLibre GL JS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 </head>
 <body>
 
@@ -44,8 +42,7 @@
         <!-- Map -->
         <div class="map-wrapper">
             <div id="map"></div>
-            <div class="map-overlay-grid"></div>
-            <div class="map-title">WORLD MAP QUEST</div>
+            <button class="map-settings-btn" id="mapSettingsBtn" title="Settings">&#x2699;</button>
         </div>
 
         <!-- Bottom Controls -->
@@ -79,18 +76,14 @@
                             <div class="route-row selecting" id="rowStart" data-target="start">
                                 <span class="route-label label-start">START</span>
                                 <span id="startDisplay" class="route-value empty">Tap map or search...</span>
+                                <button class="route-set-btn" id="setStartBtn" title="Set start point">&#x1F4CD;</button>
                             </div>
                             <div class="route-row" id="rowEnd" data-target="end">
                                 <span class="route-label label-end">DEST</span>
                                 <span id="endDisplay" class="route-value empty">Tap map or search...</span>
+                                <button class="route-set-btn" id="setEndBtn" title="Set destination">&#x1F4CD;</button>
                             </div>
                             <button class="swap-btn" id="swapBtn" title="Swap">&#x21C5;</button>
-                        </div>
-
-                        <div class="quest-stat">
-                            <span>&#x23F0;</span>
-                            <input type="time" id="targetTime" value="09:00" class="time-input">
-                            <span class="quest-stat-label">ARRIVAL</span>
                         </div>
 
                         <p id="statusText" class="quest-status-text">
@@ -102,6 +95,11 @@
                         <div id="questThumb" class="thumb-img"
                              style="background-image: url('/static/assets/bg_home_sunny_1769947415146.png')"></div>
                     </div>
+                </div>
+
+                <div class="quest-stat">
+                    <span class="quest-stat-label">&#x23F0; ARRIVAL</span>
+                    <input type="time" id="targetTime" value="09:00" class="time-input">
                 </div>
 
                 <!-- Start Button -->
@@ -118,6 +116,7 @@
     <!-- ═══════════════════════════════════════════════════════ -->
     <section id="screen-main" class="screen">
         <div class="main-header">
+            <button class="back-to-map-btn" id="backToMapBtn" title="Back to map">&#x2190;</button>
             <div class="main-header-left">
                 <span class="header-label">DEPARTURE IN:</span>
             </div>
@@ -132,8 +131,6 @@
         <div class="character-scene" id="characterScene">
             <img class="scene-bg" id="sceneBg"
                  src="/static/assets/bg_home_sunny_1769947415146.png" alt="">
-            <img class="scene-char" id="sceneChar"
-                 src="/static/assets/char_kkokki_idle_1769947451923.png" alt="">
         </div>
 
         <div class="main-bottom">
@@ -164,6 +161,19 @@
                 </div>
             </div>
 
+            <!-- Prep Time -->
+            <div class="setting-group">
+                <label class="setting-label">Prep Time <span class="setting-unit">(MINUTES)</span></label>
+                <div class="slider-container">
+                    <input type="range" id="prepSlider" class="retro-slider" min="10" max="60" step="5" value="30">
+                    <div class="slider-value" id="prepValue">30</div>
+                </div>
+                <div class="slider-labels">
+                    <span>Quick 10min</span>
+                    <span>Full 60min</span>
+                </div>
+            </div>
+
             <!-- Buffer Time -->
             <div class="setting-group">
                 <label class="setting-label">Buffer Time <span class="setting-unit">(MINUTES)</span></label>
@@ -181,24 +191,24 @@
             <div class="setting-group">
                 <label class="setting-label">BGM Select</label>
                 <div class="bgm-list">
-                    <label class="bgm-item active">
+                    <div class="bgm-item active" data-bgm-value="bgm_1">
                         <input type="radio" name="bgm" value="bgm_1" checked>
                         <span class="bgm-icon">&#x1F3B5;</span>
-                        <span class="bgm-name">Forest Town</span>
-                        <button class="bgm-preview-btn" data-bgm="bgm_1">&#x25B6;</button>
-                    </label>
-                    <label class="bgm-item disabled">
+                        <span class="bgm-name">내사람 (Inst.)</span>
+                        <button type="button" class="bgm-preview-btn" data-bgm="bgm_1">&#x25B6;</button>
+                    </div>
+                    <div class="bgm-item disabled" data-bgm-value="bgm_2">
                         <input type="radio" name="bgm" value="bgm_2" disabled>
                         <span class="bgm-icon">&#x2694;&#xFE0F;</span>
                         <span class="bgm-name">Boss Battle</span>
                         <span class="bgm-coming-soon">Coming Soon</span>
-                    </label>
-                    <label class="bgm-item disabled">
+                    </div>
+                    <div class="bgm-item disabled" data-bgm-value="bgm_3">
                         <input type="radio" name="bgm" value="bgm_3" disabled>
                         <span class="bgm-icon">&#x1F31F;</span>
                         <span class="bgm-name">Hero's Morning</span>
                         <span class="bgm-coming-soon">Coming Soon</span>
-                    </label>
+                    </div>
                 </div>
             </div>
 
@@ -216,6 +226,19 @@
                     <input type="checkbox" id="urgentAlertToggle" class="retro-checkbox" checked>
                     <span class="checkbox-visual"></span>
                 </label>
+            </div>
+
+            <!-- Route Checks -->
+            <div class="setting-group">
+                <label class="setting-label">Route Checks <span class="setting-unit">(TIMES)</span></label>
+                <div class="slider-container">
+                    <input type="range" id="checkCountSlider" class="retro-slider" min="3" max="20" step="1" value="5">
+                    <div class="slider-value" id="checkCountValue">5</div>
+                </div>
+                <div class="slider-labels">
+                    <span>Lv.1 Battery Saver</span>
+                    <span>Lv.3 Always Updated</span>
+                </div>
             </div>
 
             <!-- Wake-up Time Preview -->

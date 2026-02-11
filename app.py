@@ -24,6 +24,7 @@ def start_monitoring():
     # Apply settings from frontend
     engine.prep_time = data.get('prep_time', 30)
     engine.buffer_time = data.get('buffer_time', 10)
+    engine.check_count = data.get('check_count', 5)
     engine.early_warning_enabled = data.get('early_warning', False)
     engine.urgent_alert_enabled = data.get('urgent_alert', True)
 
