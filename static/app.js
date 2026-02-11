@@ -560,8 +560,10 @@ function updateMainScreen() {
         timer.innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
-    // ETA
-    document.getElementById('etaDisplay').innerText = `CURRENT ETA: ${r.arrival_time || '--:--'}`;
+    // Info bar: alarm time, departure time, arrival time
+    document.getElementById('infoWake').innerText = r.wake_up_time || '--:--';
+    document.getElementById('infoDepart').innerText = r.leave_time || '--:--';
+    document.getElementById('infoArrive').innerText = r.arrival_time || '--:--';
 
     // Scene background state
     const scene = document.getElementById('characterScene');
@@ -898,39 +900,10 @@ async function pollStatus() {
 
         State.isRunning = data.is_running;
 
-        // Smart merge: don't overwrite local countdown if the difference is small
-        // (prevents oscillation between server value and locally decremented value)
+        // Just store server data directly — timestamps are absolute,
+        // client calculates countdown locally, so no oscillation possible
         if (data.latest_result) {
-            if (State.latestResult) {
-                const serverWake = data.latest_result.seconds_until_wake;
-                const localWake = State.latestResult.seconds_until_wake;
-                const serverDep = data.latest_result.seconds_until_departure;
-                const localDep = State.latestResult.seconds_until_departure;
-
-                // Only adopt server time values if they differ by more than 5 seconds
-                // (meaning the route was recalculated with a new travel time)
-                if (Math.abs(serverWake - localWake) > 5) {
-                    State.latestResult.seconds_until_wake = serverWake;
-                }
-                if (Math.abs(serverDep - localDep) > 5) {
-                    State.latestResult.seconds_until_departure = serverDep;
-                }
-
-                // Always update non-time fields from server
-                State.latestResult.travel_minutes = data.latest_result.travel_minutes;
-                State.latestResult.distance = data.latest_result.distance;
-                State.latestResult.wake_up_time = data.latest_result.wake_up_time;
-                State.latestResult.leave_time = data.latest_result.leave_time;
-                State.latestResult.arrival_time = data.latest_result.arrival_time;
-                State.latestResult.prep_time = data.latest_result.prep_time;
-                State.latestResult.buffer_time = data.latest_result.buffer_time;
-                State.latestResult.is_late = data.latest_result.is_late;
-                State.latestResult.delay = data.latest_result.delay;
-                State.latestResult.early_warning_active = data.latest_result.early_warning_active;
-            } else {
-                // First result — accept fully
-                State.latestResult = data.latest_result;
-            }
+            State.latestResult = data.latest_result;
         }
 
         // Update main screen if visible
@@ -939,7 +912,7 @@ async function pollStatus() {
             updateLogs(data.logs);
         }
 
-        // Check alarm trigger (use State.latestResult which has merged values)
+        // Check alarm trigger
         if (data.is_running && State.latestResult) {
             checkAlarmTrigger({ is_running: data.is_running, latest_result: State.latestResult });
         }
@@ -957,28 +930,16 @@ function startPolling() {
     pollStatus(); // Immediate first check
 }
 
-// Local countdown (smooth, between polls)
+// Local countdown — just re-renders from absolute timestamps every second
 function startCountdownTick() {
     State.countdownInterval = setInterval(() => {
         if (State.currentScreen !== 'main' || !State.latestResult) return;
 
-        const r = State.latestResult;
-        // Decrement locally (can go negative — that's fine)
-        r.seconds_until_departure -= 1;
-        r.seconds_until_wake -= 1;
-
-        // Track transition through zero for alarm
-        if (r.seconds_until_wake > 0) {
-            State.wakeCountdownStartedPositive = true;
-        }
-
-        // Client-side alarm check: only fire if countdown transitioned through zero
-        if (r.seconds_until_wake <= 0 && State.wakeCountdownStartedPositive && !State.alarmTriggered) {
-            State.alarmTriggered = true;
-            showScreen('alarm');
-        }
-
+        // Update display (calculates from absolute time internally)
         updateMainScreen();
+
+        // Check alarm from absolute time
+        checkAlarmTrigger({ is_running: State.isRunning, latest_result: State.latestResult });
     }, 1000);
 }
 
