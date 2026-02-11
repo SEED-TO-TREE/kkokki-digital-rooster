@@ -1,0 +1,7 @@
+{
+  "name": "World Map Quest",
+  "description": "A retro RPG-style navigation and questing app with a pixel art aesthetic and real-time route planning.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
